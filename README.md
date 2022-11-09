@@ -1,4 +1,13 @@
 # go-xlsx-templater
+
+# Fork Project!
+
+**This Project Fork From [ivahaev/go-xlsx-templater](github.com/ivahaev/go-xlsx-templater)**
+
+**just upgrade tealeg/xlsx => tealeg/xlsx/v3**
+
+# Origin Readme
+
 Simple **.xlsx** (Excel XML document) template based document generator using handlebars.
 
 Takes input **.xlsx** documents with mustache sippets in it and renders new document with snippets replaced by provided context.
@@ -12,7 +21,7 @@ Thanks to `github.com/tealeg/xlsx` and `github.com/aymerick/raymond` for useful 
 ## Installation
 
 ```
-    go get -u "github.com/ivahaev/go-xlsx-templater"
+    go get -u "github.com/kkbblzq/go-xlsx-templater"
 ```
 
 ## Usage
@@ -20,7 +29,7 @@ Thanks to `github.com/tealeg/xlsx` and `github.com/aymerick/raymond` for useful 
 ### Import to your project
 
 ```go
-    import "github.com/ivahaev/go-xlsx-templater"
+    import "github.com/kkbblzq/go-xlsx-templater"
 ```
 
 ### Prepare **template.xlsx** template.

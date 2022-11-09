@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/aymerick/raymond"
-	"github.com/tealeg/xlsx"
+	"github.com/tealeg/xlsx/v3"
 )
 
 var (
@@ -50,6 +50,18 @@ func (m *Xlst) Render(in interface{}) error {
 	return m.RenderWithOptions(in, nil)
 }
 
+func (m *Xlst) getRows(st *xlsx.Sheet) ([]*xlsx.Row, error) {
+	rows := make([]*xlsx.Row, 0, st.MaxRow)
+	if err := st.ForEachRow(func(r *xlsx.Row) error {
+		rows = append(rows, r)
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+
+	return rows, nil
+}
+
 // RenderWithOptions renders report with options provided and stores it in a struct
 func (m *Xlst) RenderWithOptions(in interface{}, options *Options) error {
 	if options == nil {
@@ -58,17 +70,24 @@ func (m *Xlst) RenderWithOptions(in interface{}, options *Options) error {
 	report := xlsx.NewFile()
 	for si, sheet := range m.file.Sheets {
 		ctx := getCtx(in, si)
-		report.AddSheet(sheet.Name)
-		cloneSheet(sheet, report.Sheets[si])
-
-		err := renderRows(report.Sheets[si], sheet.Rows, ctx, options)
+		newSheet, err := report.AddSheet(sheet.Name)
 		if err != nil {
 			return err
 		}
 
-		for _, col := range sheet.Cols {
-			report.Sheets[si].Cols = append(report.Sheets[si].Cols, col)
+		cloneSheet(sheet, newSheet)
+		rows, err := m.getRows(sheet)
+		if err != nil {
+			return err
 		}
+
+		if err = renderRows(newSheet, rows, ctx, options); err != nil {
+			return err
+		}
+
+		sheet.Cols.ForEach(func(idx int, col *xlsx.Col) {
+			newSheet.Cols.Add(col)
+		})
 	}
 	m.report = report
 
@@ -137,9 +156,11 @@ func renderRows(sheet *xlsx.Sheet, rows []*xlsx.Row, ctx map[string]interface{},
 		prop := getListProp(row)
 		if prop == "" {
 			newRow := sheet.AddRow()
-			cloneRow(row, newRow, options)
-			err := renderRow(newRow, ctx)
-			if err != nil {
+			if err := cloneRow(row, newRow, options); err != nil {
+				return err
+			}
+
+			if err := renderRow(newRow, ctx); err != nil {
 				return err
 			}
 			continue
@@ -147,7 +168,9 @@ func renderRows(sheet *xlsx.Sheet, rows []*xlsx.Row, ctx map[string]interface{},
 
 		if !isArray(ctx, prop) {
 			newRow := sheet.AddRow()
-			cloneRow(row, newRow, options)
+			if err := cloneRow(row, newRow, options); err != nil {
+				return err
+			}
 			err := renderRow(newRow, ctx)
 			if err != nil {
 				return err
@@ -159,7 +182,9 @@ func renderRows(sheet *xlsx.Sheet, rows []*xlsx.Row, ctx map[string]interface{},
 		arrBackup := ctx[prop]
 		for i := 0; i < arr.Len(); i++ {
 			newRow := sheet.AddRow()
-			cloneRow(row, newRow, options)
+			if err := cloneRow(row, newRow, options); err != nil {
+				return err
+			}
 			ctx[prop] = arr.Index(i).Interface()
 			err := renderRow(newRow, ctx)
 			if err != nil {
@@ -185,15 +210,16 @@ func cloneCell(from, to *xlsx.Cell, options *Options) {
 	to.NumFmt = from.NumFmt
 }
 
-func cloneRow(from, to *xlsx.Row, options *Options) {
-	if from.Height != 0 {
-		to.SetHeight(from.Height)
+func cloneRow(from, to *xlsx.Row, options *Options) error {
+	if from.GetHeight() != 0 {
+		to.SetHeight(from.GetHeight())
 	}
 
-	for _, cell := range from.Cells {
+	return from.ForEachCell(func(cell *xlsx.Cell) error {
 		newCell := to.AddCell()
 		cloneCell(cell, newCell, options)
-	}
+		return nil
+	})
 }
 
 func renderCell(cell *xlsx.Cell, ctx interface{}) error {
@@ -212,7 +238,7 @@ func renderCell(cell *xlsx.Cell, ctx interface{}) error {
 }
 
 func cloneSheet(from, to *xlsx.Sheet) {
-	for _, col := range from.Cols {
+	from.Cols.ForEach(func(idx int, col *xlsx.Col) {
 		newCol := xlsx.Col{}
 		style := col.GetStyle()
 		newCol.SetStyle(style)
@@ -221,8 +247,8 @@ func cloneSheet(from, to *xlsx.Sheet) {
 		newCol.Collapsed = col.Collapsed
 		newCol.Min = col.Min
 		newCol.Max = col.Max
-		to.Cols = append(to.Cols, &newCol)
-	}
+		to.Cols.Add(&newCol)
+	})
 }
 
 func getCtx(in interface{}, i int) map[string]interface{} {
@@ -281,7 +307,8 @@ func isArray(in map[string]interface{}, prop string) bool {
 }
 
 func getListProp(in *xlsx.Row) string {
-	for _, cell := range in.Cells {
+	for i := 0; i < in.Sheet.MaxCol; i++ {
+		cell := in.GetCell(i)
 		if cell.Value == "" {
 			continue
 		}
@@ -293,8 +320,8 @@ func getListProp(in *xlsx.Row) string {
 }
 
 func getRangeProp(in *xlsx.Row) string {
-	if len(in.Cells) != 0 {
-		match := rangeRgx.FindAllStringSubmatch(in.Cells[0].Value, -1)
+	if in.Sheet.MaxCol != 0 {
+		match := rangeRgx.FindAllStringSubmatch(in.GetCell(0).Value, -1)
 		if match != nil {
 			return match[0][1]
 		}
@@ -306,11 +333,11 @@ func getRangeProp(in *xlsx.Row) string {
 func getRangeEndIndex(rows []*xlsx.Row) int {
 	var nesting int
 	for idx := 0; idx < len(rows); idx++ {
-		if len(rows[idx].Cells) == 0 {
+		if rows[idx].Sheet.MaxCol == 0 {
 			continue
 		}
 
-		if rangeEndRgx.MatchString(rows[idx].Cells[0].Value) {
+		if rangeEndRgx.MatchString(rows[idx].GetCell(0).Value) {
 			if nesting == 0 {
 				return idx
 			}
@@ -319,7 +346,7 @@ func getRangeEndIndex(rows []*xlsx.Row) int {
 			continue
 		}
 
-		if rangeRgx.MatchString(rows[idx].Cells[0].Value) {
+		if rangeRgx.MatchString(rows[idx].GetCell(0).Value) {
 			nesting++
 		}
 	}
@@ -328,11 +355,12 @@ func getRangeEndIndex(rows []*xlsx.Row) int {
 }
 
 func renderRow(in *xlsx.Row, ctx interface{}) error {
-	for _, cell := range in.Cells {
+	return in.ForEachCell(func(cell *xlsx.Cell) error {
 		err := renderCell(cell, ctx)
 		if err != nil {
 			return err
 		}
-	}
-	return nil
+
+		return nil
+	})
 }
