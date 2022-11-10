@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/aymerick/raymond"
-	"github.com/tealeg/xlsx/v3"
+	"github.com/kkbblzq/xlsx/v3"
 )
 
 var (
@@ -208,6 +208,7 @@ func cloneCell(from, to *xlsx.Cell, options *Options) {
 	to.VMerge = from.VMerge
 	to.Hidden = from.Hidden
 	to.NumFmt = from.NumFmt
+	to.Hyperlink = from.Hyperlink
 }
 
 func cloneRow(from, to *xlsx.Row, options *Options) error {
@@ -239,15 +240,16 @@ func renderCell(cell *xlsx.Cell, ctx interface{}) error {
 
 func cloneSheet(from, to *xlsx.Sheet) {
 	from.Cols.ForEach(func(idx int, col *xlsx.Col) {
-		newCol := xlsx.Col{}
+		newCol := xlsx.NewColForRange(col.Min, col.Max)
 		style := col.GetStyle()
 		newCol.SetStyle(style)
 		newCol.Width = col.Width
 		newCol.Hidden = col.Hidden
 		newCol.Collapsed = col.Collapsed
-		newCol.Min = col.Min
-		newCol.Max = col.Max
-		to.Cols.Add(&newCol)
+		newCol.CustomWidth = col.CustomWidth
+		newCol.OutlineLevel = col.OutlineLevel
+		newCol.Phonetic = col.Phonetic
+		to.Cols.Add(col)
 	})
 }
 

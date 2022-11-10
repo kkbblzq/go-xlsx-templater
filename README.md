@@ -4,7 +4,7 @@
 
 **This Project Fork From [ivahaev/go-xlsx-templater](github.com/ivahaev/go-xlsx-templater)**
 
-**just upgrade tealeg/xlsx => tealeg/xlsx/v3**
+**just upgrade tealeg/xlsx => kkbblzq/xlsx/v3（fork from tealeg/xlsx/v3)**
 
 # Origin Readme
 
