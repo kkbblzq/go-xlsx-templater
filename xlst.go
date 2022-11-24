@@ -197,18 +197,28 @@ func renderRows(sheet *xlsx.Sheet, rows []*xlsx.Row, ctx map[string]interface{},
 	return nil
 }
 
-func cloneCell(from, to *xlsx.Cell, options *Options) {
-	to.Value = from.Value
+func cloneCell(from, to *xlsx.Cell, options *Options) error {
+	fromBin, err := from.MarshalBinary()
+
+	if err != nil {
+		return err
+	}
+
+	if err := to.UnmarshalBinary(fromBin); err != nil {
+		return err
+	}
+
 	style := from.GetStyle()
 	if options.WrapTextInAllCells {
 		style.Alignment.WrapText = true
 	}
+
 	to.SetStyle(style)
-	to.HMerge = from.HMerge
-	to.VMerge = from.VMerge
-	to.Hidden = from.Hidden
-	to.NumFmt = from.NumFmt
-	to.Hyperlink = from.Hyperlink
+	if from.Value == "" && len(from.RichText) > 0 {
+		to.SetRichText(from.RichText)
+	}
+
+	return nil
 }
 
 func cloneRow(from, to *xlsx.Row, options *Options) error {
@@ -218,8 +228,7 @@ func cloneRow(from, to *xlsx.Row, options *Options) error {
 
 	return from.ForEachCell(func(cell *xlsx.Cell) error {
 		newCell := to.AddCell()
-		cloneCell(cell, newCell, options)
-		return nil
+		return cloneCell(cell, newCell, options)
 	})
 }
 
